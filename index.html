@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#050508">
+<meta name="description" content="TASNI Cloud Dashboard — Live 4-sensor plant moisture monitoring">
+<title>TASNI Cloud · 4-Sensor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Geist:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
+<style>
+/* ── DESIGN TOKENS ──────────────────────────────────────────── */
+:root{
+  --ink:#050508;
+  --s1:#0C0C12;
+  --s2:#13131C;
+  --s3:#1A1A26;
+  --rim:rgba(255,255,255,.07);
+  --rim2:rgba(255,255,255,.13);
+  --fg1:#FAFAFA;
+  --fg2:rgba(255,255,255,.55);
+  --fg3:rgba(255,255,255,.28);
+  --fg4:rgba(255,255,255,.1);
+  --acc:#2DD4BF;
+  --r1:20px;
+  --font:'Geist',system-ui,sans-serif;
+  --mono:'DM Mono',monospace;
+  --serif:'DM Serif Display',serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{background:var(--ink);height:100%}
+body{font-family:var(--font);background:var(--ink);color:var(--fg1);
+  min-height:100dvh;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+.root{display:flex;flex-direction:column;min-height:100dvh}
+
+/* ── HEADER ─────────────────────────────────────────────────── */
+.hdr{
+  position:sticky;top:0;z-index:50;
+  padding:0 20px;padding-top:max(env(safe-area-inset-top),14px);
+  background:rgba(5,5,8,.88);
+  backdrop-filter:blur(32px) saturate(180%);
+  -webkit-backdrop-filter:blur(32px) saturate(180%);
+  border-bottom:1px solid var(--rim)}
+.hdr-inner{height:52px;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,var(--acc),#10B981);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  box-shadow:0 0 18px rgba(45,212,191,.3);transition:box-shadow .6s,background .6s}
+.brand-name{font-size:16px;font-weight:800;letter-spacing:-.3px}
+.brand-sub{font-family:var(--mono);font-size:8.5px;color:var(--fg3);
+  letter-spacing:1.4px;text-transform:uppercase;margin-top:1px}
+.conn-badge{display:flex;align-items:center;gap:5px;
+  padding:5px 11px;border-radius:100px;
+  font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.3px;
+  border:1px solid;transition:all .4s}
+.badge-connecting{background:rgba(251,191,36,.07);color:#FBBF24;border-color:rgba(251,191,36,.18)}
+.badge-live{background:rgba(45,212,191,.07);color:#2DD4BF;border-color:rgba(45,212,191,.18)}
+.badge-stale{background:rgba(248,113,113,.07);color:#F87171;border-color:rgba(248,113,113,.18)}
+.badge-offline{background:rgba(100,116,139,.07);color:#64748B;border-color:rgba(100,116,139,.15)}
+@keyframes breathe{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
+.bdot{width:5px;height:5px;border-radius:50%;animation:breathe 2.4s ease-in-out infinite;flex-shrink:0}
+
+/* ── SCROLL ─────────────────────────────────────────────────── */
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:20px 16px 48px;
+  padding-left:max(16px,env(safe-area-inset-left));
+  padding-right:max(16px,env(safe-area-inset-right));
+  max-width:540px;margin:0 auto;width:100%}
+
+/* ── SETUP OVERLAY ──────────────────────────────────────────── */
+.setup-overlay{position:fixed;inset:0;z-index:200;
+  background:rgba(5,5,8,.97);
+  display:flex;align-items:center;justify-content:center;padding:24px}
+.setup-box{width:100%;max-width:420px;
+  background:var(--s1);border:1px solid var(--rim2);border-radius:24px;padding:28px 24px}
+.setup-logo{font-size:40px;margin-bottom:12px;text-align:center}
+.setup-title{font-size:22px;font-weight:800;letter-spacing:-.5px;text-align:center;margin-bottom:6px}
+.setup-sub{font-family:var(--mono);font-size:11px;color:var(--fg3);
+  text-align:center;line-height:1.6;margin-bottom:24px;letter-spacing:.2px}
+.setup-fields{display:flex;flex-direction:column;gap:14px}
+.field-label{font-family:var(--mono);font-size:9px;color:var(--fg3);
+  letter-spacing:1.1px;text-transform:uppercase;margin-bottom:5px}
+.field-input{width:100%;background:var(--s3);border:1px solid var(--rim2);
+  border-radius:11px;padding:12px 14px;
+  font-family:var(--mono);font-size:13px;color:var(--fg1);
+  outline:none;transition:border-color .2s}
+.field-input:focus{border-color:var(--acc)}
+.field-input::placeholder{color:var(--fg4)}
+.connect-btn{width:100%;margin-top:20px;padding:14px;
+  background:var(--acc);border:none;border-radius:12px;
+  font-family:var(--font);font-size:15px;font-weight:700;color:#000;
+  cursor:pointer;transition:opacity .15s,transform .15s}
+.connect-btn:active{opacity:.8;transform:scale(.98)}
+.setup-note{font-family:var(--mono);font-size:9.5px;color:var(--fg4);
+  text-align:center;margin-top:14px;line-height:1.6}
+.setup-note a{color:var(--acc);text-decoration:none}
+
+/* ── STALE BANNER ───────────────────────────────────────────── */
+.stale-banner{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.18);
+  border-radius:12px;padding:10px 14px;margin-bottom:12px;
+  font-family:var(--mono);font-size:10px;color:#FBBF24;
+  align-items:center;gap:8px;letter-spacing:.2px;display:none}
+
+/* ── SECTION TITLE ──────────────────────────────────────────── */
+.sec-title{font-family:var(--mono);font-size:9px;color:var(--fg3);
+  letter-spacing:1.2px;text-transform:uppercase;margin-bottom:10px;padding-left:2px}
+
+/* ── 4-SENSOR GRID ──────────────────────────────────────────── */
+.sensors-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+@media(max-width:380px){.sensors-grid{grid-template-columns:1fr}}
+
+/* ── SENSOR CARD ────────────────────────────────────────────── */
+.scard{
+  background:var(--s1);border:1px solid var(--rim);
+  border-radius:22px;overflow:hidden;
+  transition:border-color .5s,box-shadow .5s;
+  cursor:pointer;position:relative}
+.scard.active-card{border-color:var(--sc-col,var(--acc));
+  box-shadow:0 0 0 1px var(--sc-col,var(--acc))22,0 4px 24px var(--sc-col,var(--acc))18}
+.scard-glow{position:absolute;pointer-events:none;
+  top:-30px;left:-20px;width:140px;height:140px;
+  border-radius:50%;opacity:.06;
+  background:radial-gradient(circle,var(--sc-col,var(--acc)),transparent 70%);
+  transition:background .7s}
+.scard-head{position:relative;z-index:1;
+  padding:14px 14px 8px;
+  display:flex;justify-content:space-between;align-items:flex-start}
+.scard-name{font-family:var(--mono);font-size:9px;color:var(--fg3);
+  letter-spacing:.8px;text-transform:uppercase}
+.scard-num{font-family:var(--mono);font-size:9px;color:var(--fg4)}
+.scard-gauge{position:relative;z-index:1;
+  display:flex;flex-direction:column;align-items:center;padding:0 14px 14px}
+.sg-wrap{position:relative;width:88px;height:88px}
+.sg-svg{width:88px;height:88px;transform:rotate(-90deg)}
+.sg-track{fill:none;stroke:rgba(255,255,255,.05);stroke-width:8;stroke-linecap:round}
+.sg-glow{fill:none;stroke-width:12;stroke-linecap:round;stroke-dasharray:232;
+  opacity:.16;filter:blur(3px);
+  transition:stroke-dashoffset 1.3s cubic-bezier(.34,1.4,.64,1),stroke .6s}
+.sg-arc{fill:none;stroke-width:8;stroke-linecap:round;stroke-dasharray:232;
+  transition:stroke-dashoffset 1.3s cubic-bezier(.34,1.4,.64,1),stroke .6s}
+.sg-center{position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center}
+.sg-val{font-family:var(--serif);font-size:30px;line-height:1;transition:color .6s}
+.sg-unit{font-family:var(--mono);font-size:8px;color:var(--fg4);margin-top:1px}
+.scard-status{font-family:var(--mono);font-size:9.5px;font-weight:500;
+  letter-spacing:.4px;margin-top:6px;transition:color .6s}
+.scard-bar{width:100%;height:2px;background:var(--fg4);border-radius:2px;
+  overflow:hidden;margin-top:8px}
+.scard-barf{height:2px;border-radius:2px;
+  transition:width 1.3s cubic-bezier(.34,1.4,.64,1),background .6s}
+.scard-chips{display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;justify-content:center}
+.sc-chip{font-family:var(--mono);font-size:8px;color:var(--fg4);
+  background:var(--s3);border:1px solid var(--rim);
+  padding:2px 7px;border-radius:6px}
+.sc-chip span{color:var(--fg2)}
+
+/* ── DETAIL HERO (shown when sensor card is tapped) ─────────── */
+.detail-hero{
+  background:var(--s1);border:1px solid var(--rim);
+  border-radius:26px;overflow:hidden;
+  margin-bottom:12px;
+  transition:border-color .5s}
+.detail-glow{position:absolute;pointer-events:none;
+  top:-60px;left:-40px;width:280px;height:280px;
+  border-radius:50%;opacity:.08;
+  background:radial-gradient(circle,var(--acc),transparent 70%);
+  transition:background .8s;
+  animation:drift 8s ease-in-out infinite alternate}
+@keyframes drift{0%{transform:translate(0,0)}100%{transform:translate(20px,12px) scale(1.06)}}
+.dh-body{position:relative;z-index:1;padding:22px 20px 18px}
+.dh-pill{display:inline-flex;align-items:center;gap:5px;
+  padding:4px 12px;border-radius:100px;
+  font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.6px;
+  border:1px solid;align-self:flex-start;margin-bottom:14px;transition:all .6s}
+.dh-pill-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.dh-gauge-row{display:flex;align-items:center;gap:6px}
+.dh-gauge-wrap{position:relative;width:148px;height:148px;flex-shrink:0}
+.dh-gauge-svg{width:148px;height:148px;transform:rotate(-90deg)}
+.dh-g-track{fill:none;stroke:rgba(255,255,255,.05);stroke-width:10;stroke-linecap:round}
+.dh-g-glow{fill:none;stroke-width:14;stroke-linecap:round;stroke-dasharray:389.56;
+  opacity:.18;filter:blur(4px);
+  transition:stroke-dashoffset 1.3s cubic-bezier(.34,1.4,.64,1),stroke .7s}
+.dh-g-arc{fill:none;stroke-width:10;stroke-linecap:round;stroke-dasharray:389.56;
+  transition:stroke-dashoffset 1.3s cubic-bezier(.34,1.4,.64,1),stroke .7s}
+.dh-g-center{position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dh-g-val{font-family:var(--serif);font-size:48px;line-height:1;letter-spacing:-1px;transition:color .7s}
+.dh-g-unit{font-family:var(--mono);font-size:12px;color:var(--fg3);letter-spacing:1px;margin-top:2px}
+.dh-info{flex:1;padding-left:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.dh-label{font-size:22px;font-weight:800;letter-spacing:-.5px;color:var(--fg1)}
+.dh-desc{font-size:12px;color:var(--fg2);line-height:1.6}
+.dh-m-track{height:3px;background:var(--fg4);border-radius:3px;overflow:hidden}
+.dh-m-fill{height:3px;border-radius:3px;transition:width 1.3s cubic-bezier(.34,1.4,.64,1),background .7s}
+.dh-m-labels{display:flex;justify-content:space-between;
+  font-family:var(--mono);font-size:8px;color:var(--fg4);margin-top:4px}
+.dh-chips{display:flex;gap:5px;flex-wrap:wrap}
+.dh-chip{display:flex;align-items:center;gap:4px;padding:3px 9px;border-radius:8px;
+  background:var(--s3);border:1px solid var(--rim);
+  font-family:var(--mono);font-size:9.5px;color:var(--fg3)}
+.dh-chip-v{color:var(--fg1);font-weight:500}
+.dh-foot{border-top:1px solid var(--rim);padding:11px 20px;
+  display:flex;justify-content:space-between;
+  position:relative;z-index:1}
+.dh-ft{font-family:var(--mono);font-size:9px;color:var(--fg4);letter-spacing:.3px}
+/* sensor tab selector inside detail */
+.sensor-tabs{display:flex;gap:5px;margin-bottom:14px;overflow-x:auto;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.sensor-tabs::-webkit-scrollbar{display:none}
+.stab{padding:6px 14px;border-radius:100px;
+  font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.5px;
+  border:1px solid var(--rim);background:var(--s2);color:var(--fg3);
+  cursor:pointer;white-space:nowrap;transition:all .2s;flex-shrink:0}
+.stab.sel{color:var(--stab-col,var(--acc));
+  background:var(--stab-col,var(--acc))14;
+  border-color:var(--stab-col,var(--acc))33}
+
+/* ── CHART ──────────────────────────────────────────────────── */
+.chart-card{background:var(--s1);border:1px solid var(--rim);
+  border-radius:var(--r1);padding:18px 16px 14px;margin-bottom:12px}
+.cc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.cc-head{font-size:13px;font-weight:700;color:var(--fg1);letter-spacing:-.2px}
+.cc-meta{font-family:var(--mono);font-size:9px;color:var(--fg3);margin-top:3px;letter-spacing:.3px}
+.cc-range{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:100px;
+  background:var(--s3);border:1px solid var(--rim);color:var(--fg2)}
+.chart-svg{width:100%;height:68px;overflow:visible;display:block}
+.cc-footer{display:flex;justify-content:space-between;margin-top:7px}
+.cc-ft{font-family:var(--mono);font-size:8.5px;color:var(--fg4);letter-spacing:.2px}
+
+/* ── METRICS ────────────────────────────────────────────────── */
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.metric{background:var(--s1);border:1px solid var(--rim);
+  border-radius:var(--r1);padding:16px 14px;position:relative;overflow:hidden}
+.metric::after{content:'';position:absolute;top:0;left:16px;right:16px;height:1px;
+  background:linear-gradient(90deg,transparent,var(--ma,rgba(255,255,255,.08)),transparent)}
+.metric-label{font-family:var(--mono);font-size:8.5px;color:var(--fg4);
+  letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.metric-val{font-family:var(--serif);font-size:30px;line-height:1;color:var(--fg1);letter-spacing:-.5px}
+.metric-unit{font-family:var(--mono);font-size:11px;color:var(--fg3)}
+.metric-sub{font-family:var(--mono);font-size:10px;color:var(--fg3);margin-top:5px}
+.metric-bar{height:2px;border-radius:2px;background:var(--fg4);margin-top:10px;overflow:hidden}
+.metric-barf{height:2px;border-radius:2px;transition:width .9s ease,background .6s}
+
+/* ── DEVICE INFO CARD ───────────────────────────────────────── */
+.info-card{background:var(--s1);border:1px solid var(--rim);
+  border-radius:var(--r1);padding:16px;margin-bottom:12px}
+.info-head{font-family:var(--mono);font-size:9px;color:var(--fg4);
+  letter-spacing:1.2px;text-transform:uppercase;margin-bottom:12px}
+.info-row{display:flex;justify-content:space-between;align-items:center;
+  padding:6px 0;border-bottom:1px solid var(--rim)}
+.info-row:last-child{border-bottom:none}
+.info-k{font-size:12px;color:var(--fg3)}
+.info-v{font-family:var(--mono);font-size:11.5px;color:var(--fg1);font-weight:500;
+  font-variant-numeric:tabular-nums}
+
+/* ── RECONFIGURE CARD ───────────────────────────────────────── */
+.connect-card{background:var(--s1);border:1px solid var(--rim2);
+  border-radius:var(--r1);padding:20px;margin-bottom:12px;text-align:center}
+.connect-card-ico{font-size:32px;margin-bottom:10px}
+.connect-card-t{font-size:16px;font-weight:700;margin-bottom:6px}
+.connect-card-s{font-family:var(--mono);font-size:11px;color:var(--fg3);line-height:1.6;margin-bottom:16px}
+.reconfigure-btn{padding:10px 20px;background:var(--s3);border:1px solid var(--rim2);
+  border-radius:10px;font-family:var(--mono);font-size:11px;
+  color:var(--fg2);cursor:pointer;transition:.15s}
+.reconfigure-btn:active{opacity:.7}
+
+/* ── FOOTER ─────────────────────────────────────────────────── */
+.footer{text-align:center;padding:16px;
+  font-family:var(--mono);font-size:9px;color:var(--fg4);
+  letter-spacing:.4px;line-height:1.8}
+.footer a{color:var(--acc);text-decoration:none}
+
+/* ── TOAST ──────────────────────────────────────────────────── */
+.toast{position:fixed;bottom:24px;left:50%;
+  transform:translateX(-50%) translateY(6px);
+  background:#16161F;border:1px solid var(--rim2);
+  padding:10px 22px;border-radius:100px;
+  font-family:var(--mono);font-size:12px;font-weight:500;color:var(--fg1);
+  opacity:0;transition:.22s;z-index:999;
+  pointer-events:none;white-space:nowrap;
+  box-shadow:0 12px 40px rgba(0,0,0,.7)}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{color:#34D399;border-color:rgba(52,211,153,.22)}
+.toast.err{color:#F87171;border-color:rgba(248,113,113,.22)}
+</style>
+</head>
+<body>
+<div class="root">
+
+<!-- ═══ HEADER ══════════════════════════════════════════════════ -->
+<header class="hdr">
+  <div class="hdr-inner">
+    <div class="brand">
+      <div class="logo" id="logo">🌿</div>
+      <div>
+        <div class="brand-name">TASNI</div>
+        <div class="brand-sub">Cloud · 4-Sensor</div>
+      </div>
+    </div>
+    <div class="conn-badge badge-connecting" id="connBadge">
+      <div class="bdot" id="connDot" style="background:#FBBF24"></div>
+      <span id="connTxt">Connecting...</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ SETUP OVERLAY ═══════════════════════════════════════════ -->
+<div class="setup-overlay" id="setupOverlay">
+  <div class="setup-box">
+    <div class="setup-logo">🌿</div>
+    <div class="setup-title">Welcome to TASNI</div>
+    <div class="setup-sub">
+      Enter your HiveMQ broker details to connect<br>
+      to all 4 sensors from anywhere in the world.
+    </div>
+    <div class="setup-fields">
+      <div>
+        <div class="field-label">HiveMQ Broker Host</div>
+        <input class="field-input" id="inBroker" type="text"
+          placeholder="xxxxxxxx.s1.eu.hivemq.cloud" autocomplete="off" autocapitalize="none">
+      </div>
+      <div>
+        <div class="field-label">Username</div>
+        <input class="field-input" id="inUser" type="text"
+          placeholder="your-hivemq-username" autocomplete="off" autocapitalize="none">
+      </div>
+      <div>
+        <div class="field-label">Password</div>
+        <input class="field-input" id="inPass" type="password" placeholder="your-hivemq-password">
+      </div>
+      <div>
+        <div class="field-label">Device ID (last 4 chars of MAC, shown on device)</div>
+        <input class="field-input" id="inDevice" type="text"
+          placeholder="e.g. A1B2" maxlength="12" autocomplete="off" autocapitalize="characters">
+      </div>
+    </div>
+    <button class="connect-btn" onclick="doConnect()">Connect to My Plants</button>
+    <div class="setup-note">
+      Credentials saved in your browser only.<br>
+      Free HiveMQ Cloud at <a href="https://www.hivemq.com/mqtt-cloud-broker/" target="_blank">hivemq.com</a>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DASHBOARD ════════════════════════════════════════════════ -->
+<main class="scroll" id="dashboard" style="display:none">
+
+  <!-- Stale warning -->
+  <div class="stale-banner" id="staleBanner">
+    ⚠ Last update was over 2 minutes ago — device may be offline
+  </div>
+
+  <!-- ── 4 SENSOR CARDS ── -->
+  <p class="sec-title" style="margin-bottom:8px">All Sensors</p>
+  <div class="sensors-grid" id="sensorGrid">
+    <!-- Generated by JS -->
+  </div>
+
+  <!-- ── SELECTED SENSOR DETAIL HERO ── -->
+  <p class="sec-title" id="detailTitle">Sensor 1 Detail</p>
+  <section class="detail-hero" id="detailHero">
+    <div class="detail-glow" id="dhGlow"></div>
+    <div class="dh-body">
+      <!-- Sensor selector tabs -->
+      <div class="sensor-tabs" id="sensorTabs"></div>
+      <!-- Tier pill -->
+      <div class="dh-pill" id="dhPill">
+        <div class="dh-pill-dot" id="dhPillDot"></div>
+        <span id="dhPillLbl">Waiting...</span>
+      </div>
+      <!-- Large gauge + info -->
+      <div class="dh-gauge-row">
+        <div class="dh-gauge-wrap">
+          <svg class="dh-gauge-svg" viewBox="0 0 148 148">
+            <circle class="dh-g-track" cx="74" cy="74" r="62"/>
+            <circle class="dh-g-glow" id="dhGglow" cx="74" cy="74" r="62" stroke="#2DD4BF" stroke-dashoffset="390"/>
+            <circle class="dh-g-arc"  id="dhGarc"  cx="74" cy="74" r="62" stroke="#2DD4BF" stroke-dashoffset="390"/>
+          </svg>
+          <div class="dh-g-center">
+            <div class="dh-g-val" id="dhGval" style="color:#2DD4BF">--</div>
+            <div class="dh-g-unit">PERCENT</div>
+          </div>
+        </div>
+        <div class="dh-info">
+          <div class="dh-label" id="dhLabel">Waiting for data...</div>
+          <div class="dh-desc"  id="dhDesc">Connecting to your device.</div>
+          <div>
+            <div class="dh-m-track">
+              <div class="dh-m-fill" id="dhMfill" style="width:0%;background:#2DD4BF"></div>
+            </div>
+            <div class="dh-m-labels"><span>DRY</span><span>MID</span><span>WET</span></div>
+          </div>
+          <div class="dh-chips">
+            <div class="dh-chip">RAW <span class="dh-chip-v" id="dhRaw">--</span></div>
+            <div class="dh-chip">TREND <span class="dh-chip-v" id="dhTrend">--</span></div>
+            <div class="dh-chip" id="dhCal">DEFAULT</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dh-foot">
+      <span class="dh-ft" id="dhLastSeen">Waiting for first message...</span>
+      <span class="dh-ft" id="dhFwVer">--</span>
+    </div>
+  </section>
+
+  <!-- ── HISTORY CHART ── -->
+  <div class="chart-card">
+    <div class="cc-top">
+      <div>
+        <div class="cc-head" id="chartTitle">Moisture History</div>
+        <div class="cc-meta">30-POINT TREND</div>
+      </div>
+      <div class="cc-range" id="chartRange">Waiting...</div>
+    </div>
+    <svg class="chart-svg" viewBox="0 0 330 68" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="cgrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stop-color="#2DD4BF" stop-opacity=".25" id="cgStop1"/>
+          <stop offset="80%" stop-color="#2DD4BF" stop-opacity=".02" id="cgStop2"/>
+        </linearGradient>
+      </defs>
+      <line x1="0" y1="17" x2="330" y2="17" stroke="rgba(255,255,255,.04)" stroke-dasharray="3,5"/>
+      <line x1="0" y1="34" x2="330" y2="34" stroke="rgba(255,255,255,.04)" stroke-dasharray="3,5"/>
+      <line x1="0" y1="51" x2="330" y2="51" stroke="rgba(255,255,255,.04)" stroke-dasharray="3,5"/>
+      <text x="326" y="15" fill="rgba(255,255,255,.1)" font-size="8" font-family="DM Mono,monospace" text-anchor="end">75</text>
+      <text x="326" y="32" fill="rgba(255,255,255,.1)" font-size="8" font-family="DM Mono,monospace" text-anchor="end">50</text>
+      <text x="326" y="49" fill="rgba(255,255,255,.1)" font-size="8" font-family="DM Mono,monospace" text-anchor="end">25</text>
+      <text id="chartEmpty" x="165" y="34" text-anchor="middle"
+        fill="rgba(255,255,255,.1)" font-size="11" font-family="DM Mono,monospace" letter-spacing=".5">COLLECTING DATA</text>
+      <polygon id="chartArea" fill="url(#cgrad)" points=""/>
+      <polyline id="chartLine" fill="none" stroke="#2DD4BF" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round" points=""/>
+      <circle id="chartDot"  cx="0" cy="0" r="4" fill="#2DD4BF" stroke="#050508" stroke-width="2"/>
+      <circle id="chartHalo" cx="0" cy="0" r="8" fill="#2DD4BF" opacity=".15"/>
+    </svg>
+    <div class="cc-footer">
+      <span class="cc-ft">OLDEST</span>
+      <span class="cc-ft" id="chartCount">0 POINTS</span>
+      <span class="cc-ft">NOW</span>
+    </div>
+  </div>
+
+  <!-- ── SYSTEM METRICS ── -->
+  <p class="sec-title">System</p>
+  <div class="metrics">
+    <div class="metric" id="sigCard" style="--ma:#34D39966">
+      <div class="metric-label">WiFi Signal</div>
+      <div class="metric-val"><span id="mRssi">--</span><span class="metric-unit" id="mRssiU"></span></div>
+      <div class="metric-sub">Signal quality</div>
+      <div class="metric-bar"><div class="metric-barf" id="sigBar" style="width:0%"></div></div>
+    </div>
+    <div class="metric" id="heapCard" style="--ma:#34D39966">
+      <div class="metric-label">Free Memory</div>
+      <div class="metric-val"><span id="mHeap">--</span><span class="metric-unit">KB</span></div>
+      <div class="metric-sub">Heap available</div>
+      <div class="metric-bar"><div class="metric-barf" id="heapBar" style="width:0%"></div></div>
+    </div>
+    <div class="metric" style="--ma:#818CF866">
+      <div class="metric-label">Uptime</div>
+      <div class="metric-val"><span id="mUpH">--</span><span class="metric-unit">h</span></div>
+      <div class="metric-sub" id="mUpM">--</div>
+      <div class="metric-bar">
+        <div class="metric-barf" style="width:100%;background:#818CF8;opacity:.35"></div>
+      </div>
+    </div>
+    <div class="metric" style="--ma:#A78BFA66">
+      <div class="metric-label">Boot Count</div>
+      <div class="metric-val"><span id="mBoot">--</span></div>
+      <div class="metric-sub" id="mDevID">--</div>
+      <div class="metric-bar">
+        <div class="metric-barf" style="width:100%;background:#A78BFA;opacity:.3"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DEVICE INFO ── -->
+  <div class="info-card">
+    <div class="info-head">Device</div>
+    <div class="info-row"><span class="info-k">Device ID</span><span class="info-v" id="iDevID">--</span></div>
+    <div class="info-row"><span class="info-k">Firmware</span><span class="info-v" id="iFW">--</span></div>
+    <div class="info-row"><span class="info-k">Boot Count</span><span class="info-v" id="iBoot">--</span></div>
+    <div class="info-row"><span class="info-k">Last Message</span><span class="info-v" id="iTs">--</span></div>
+  </div>
+
+  <!-- ── RECONFIGURE ── -->
+  <div class="connect-card">
+    <div class="connect-card-ico">⚙️</div>
+    <div class="connect-card-t">Wrong device?</div>
+    <div class="connect-card-s">Change your broker or device ID.</div>
+    <button class="reconfigure-btn" onclick="showSetup()">Reconfigure</button>
+  </div>
+
+  <div class="footer">
+    TASNI Cloud Dashboard &nbsp;·&nbsp; 4-Sensor Edition &nbsp;·&nbsp;
+    Data via HiveMQ Cloud MQTT
+  </div>
+</main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  TIER CONFIG
+// ═══════════════════════════════════════════════════════════════
+var T=[
+  {t:15, a:'#F87171', l:'CRITICAL',   h:'Critical!',   d:'Critically dry. Water immediately.'},
+  {t:30, a:'#FB923C', l:'NEEDS WATER',h:'Needs Water',  d:'Low moisture. Water your plant now.'},
+  {t:50, a:'#FBBF24', l:'THIRSTY',    h:'Thirsty',      d:'Soil is drying out. Consider watering soon.'},
+  {t:70, a:'#34D399', l:'HEALTHY',    h:'Healthy',      d:'Good moisture. Plant is in great shape.'},
+  {t:101,a:'#2DD4BF', l:'THRIVING',   h:'Thriving',     d:'Moisture is excellent. Your plant is thriving.'}
+];
+function gT(m){ for(var i=0;i<T.length;i++) if(m<T[i].t) return T[i]; return T[4]; }
+
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
+var mqttClient  = null;
+var lastMsgTime = 0;
+var staleTimer  = null;
+var STORAGE_KEY = 'tasni_cfg_4s_v1';
+
+// Per-sensor state: history arrays + last data
+var sensorHistory = [[],[],[],[]];  // 30-point history per sensor
+var sensorData    = [null,null,null,null];
+var selectedSensor = 0;             // currently shown in detail hero
+
+// Default sensor names (overridden by payload)
+var sensorNames = ['Sensor 1','Sensor 2','Sensor 3','Sensor 4'];
+
+// ═══════════════════════════════════════════════════════════════
+//  SENSOR COLOURS — each sensor gets an accent based on moisture
+// ═══════════════════════════════════════════════════════════════
+function sColor(idx){
+  var s = sensorData[idx];
+  if(!s || !s.c || s.m < 0) return '#475569';
+  return gT(parseInt(s.m)).a;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  STORAGE
+// ═══════════════════════════════════════════════════════════════
+function loadCreds(){
+  try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null'); }
+  catch(e){ return null; }
+}
+function saveCreds(o){ localStorage.setItem(STORAGE_KEY, JSON.stringify(o)); }
+
+// ═══════════════════════════════════════════════════════════════
+//  SPRING ANIMATOR
+// ═══════════════════════════════════════════════════════════════
+var _sp={};
+function sTo(id,tgt){
+  var e=document.getElementById(id); if(!e) return;
+  var p=parseFloat(e._v!=null?e._v:e.textContent)||0, v=e._vel||0;
+  if(Math.abs(p-tgt)<.5){e.textContent=Math.round(tgt);e._v=tgt;e._vel=0;return;}
+  if(_sp[id]) cancelAnimationFrame(_sp[id]);
+  (function tk(){
+    var f=220*(tgt-p)-26*v; v+=f*.016; p+=v*.016;
+    e._v=p;e._vel=v;e.textContent=Math.round(p);
+    if(Math.abs(tgt-p)<.3&&Math.abs(v)<.3){e.textContent=Math.round(tgt);e._v=tgt;e._vel=0;return;}
+    _sp[id]=requestAnimationFrame(tk);
+  })();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ACCENT / LOGO
+// ═══════════════════════════════════════════════════════════════
+function setAcc(c){
+  document.documentElement.style.setProperty('--acc',c);
+  var lg=document.getElementById('logo');
+  if(lg){lg.style.background='linear-gradient(135deg,'+c+',color-mix(in srgb,'+c+' 60%,#10B981))';
+         lg.style.boxShadow='0 0 18px color-mix(in srgb,'+c+' 40%,transparent)';}
+  var s1=document.getElementById('cgStop1'),s2=document.getElementById('cgStop2');
+  if(s1) s1.setAttribute('stop-color',c);
+  if(s2) s2.setAttribute('stop-color',c);
+  var cl=document.getElementById('chartLine');
+  if(cl) cl.style.stroke=c;
+  var cd=document.getElementById('chartDot'),ch=document.getElementById('chartHalo');
+  if(cd) cd.setAttribute('fill',c);
+  if(ch) ch.setAttribute('fill',c);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BUILD SENSOR GRID (called once on first data)
+// ═══════════════════════════════════════════════════════════════
+var gridBuilt = false;
+function buildGrid(){
+  if(gridBuilt) return;
+  gridBuilt = true;
+  var grid = document.getElementById('sensorGrid');
+  grid.innerHTML = '';
+  for(var i=0;i<4;i++){
+    var idx=i;
+    var card = document.createElement('div');
+    card.className = 'scard' + (i===0?' active-card':'');
+    card.id = 'sc_'+i;
+    card.onclick = (function(ii){ return function(){ selectSensor(ii); }; })(i);
+    card.innerHTML =
+      '<div class="scard-glow" id="sg_'+i+'"></div>'+
+      '<div class="scard-head">'+
+        '<div class="scard-name" id="sn_'+i+'">'+sensorNames[i]+'</div>'+
+        '<div class="scard-num">#'+(i+1)+'</div>'+
+      '</div>'+
+      '<div class="scard-gauge">'+
+        '<div class="sg-wrap">'+
+          '<svg class="sg-svg" viewBox="0 0 88 88">'+
+            '<circle class="sg-track" cx="44" cy="44" r="37"/>'+
+            '<circle class="sg-glow" id="sgg_'+i+'" cx="44" cy="44" r="37" stroke="#475569" stroke-dashoffset="232"/>'+
+            '<circle class="sg-arc"  id="sga_'+i+'" cx="44" cy="44" r="37" stroke="#475569" stroke-dashoffset="232"/>'+
+          '</svg>'+
+          '<div class="sg-center">'+
+            '<div class="sg-val" id="sgv_'+i+'" style="color:#475569">--</div>'+
+            '<div class="sg-unit">%</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="scard-status" id="sst_'+i+'" style="color:#475569">N/A</div>'+
+        '<div class="scard-bar"><div class="scard-barf" id="sbf_'+i+'" style="width:0%"></div></div>'+
+        '<div class="scard-chips">'+
+          '<div class="sc-chip">RAW <span id="scr_'+i+'">--</span></div>'+
+          '<div class="sc-chip">↕ <span id="sct_'+i+'">--</span></div>'+
+        '</div>'+
+      '</div>';
+    grid.appendChild(card);
+  }
+  // Build sensor tabs
+  var tabs = document.getElementById('sensorTabs');
+  tabs.innerHTML='';
+  for(var i=0;i<4;i++){
+    var btn = document.createElement('button');
+    btn.className='stab'+(i===0?' sel':'');
+    btn.id='stab_'+i;
+    btn.textContent=sensorNames[i];
+    btn.onclick=(function(ii){return function(){selectSensor(ii);};})(i);
+    tabs.appendChild(btn);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SELECT SENSOR
+// ═══════════════════════════════════════════════════════════════
+function selectSensor(idx){
+  selectedSensor = idx;
+  // Update card highlight
+  for(var i=0;i<4;i++){
+    var c=document.getElementById('sc_'+i);
+    if(c) c.className='scard'+(i===idx?' active-card':'');
+    if(c && sensorData[i]){
+      var col=sColor(i);
+      c.style.setProperty('--sc-col',col);
+    }
+    var tb=document.getElementById('stab_'+i);
+    if(tb){
+      tb.className='stab'+(i===idx?' sel':'');
+      if(i===idx && sensorData[i]) tb.style.setProperty('--stab-col',sColor(i));
+    }
+  }
+  // Update detail section title
+  document.getElementById('detailTitle').textContent=sensorNames[idx]+' Detail';
+  // Update chart
+  var s=sensorData[idx];
+  var col=sColor(idx);
+  setAcc(col);
+  document.getElementById('chartTitle').textContent=sensorNames[idx]+' History';
+  drawChart(sensorHistory[idx], col);
+  // Update detail hero
+  if(s) applyDetailHero(idx, s, col);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  UPDATE SINGLE SENSOR CARD (small)
+// ═══════════════════════════════════════════════════════════════
+function updateCard(idx, s){
+  var conn = s.c===1 && parseInt(s.m)>=0;
+  var m    = conn ? parseInt(s.m) : 0;
+  var col  = conn ? gT(m).a : '#475569';
+  var dash = conn ? Math.round(232*(1-m/100)) : 232;
+
+  // card border
+  var card = document.getElementById('sc_'+idx);
+  if(card){
+    card.style.setProperty('--sc-col',col);
+    if(idx===selectedSensor) card.className='scard active-card';
+  }
+  // glow
+  var gl=document.getElementById('sg_'+idx);
+  if(gl) gl.style.background='radial-gradient(circle,'+col+',transparent 70%)';
+  // arcs
+  var sga=document.getElementById('sga_'+idx);
+  if(sga){sga.style.stroke=col;sga.style.strokeDashoffset=dash;}
+  var sgg=document.getElementById('sgg_'+idx);
+  if(sgg){sgg.style.stroke=col;sgg.style.strokeDashoffset=dash;}
+  // value
+  var sgv=document.getElementById('sgv_'+idx);
+  if(sgv){sgv.style.color=col;if(conn)sTo('sgv_'+idx,m);else sgv.textContent='--';}
+  // status
+  var sst=document.getElementById('sst_'+idx);
+  if(sst){sst.textContent=conn?gT(m).l:'OFFLINE';sst.style.color=col;}
+  // bar
+  var sbf=document.getElementById('sbf_'+idx);
+  if(sbf){sbf.style.width=(conn?m:0)+'%';sbf.style.background=col;}
+  // chips
+  var scr=document.getElementById('scr_'+idx);
+  if(scr) scr.textContent=s.r||'--';
+  var sct=document.getElementById('sct_'+idx);
+  if(sct) sct.textContent=s.t||'~';
+  // name
+  var sn=document.getElementById('sn_'+idx);
+  if(sn && s.n) sn.textContent=s.n;
+  // tab
+  var tb=document.getElementById('stab_'+idx);
+  if(tb){
+    if(s.n) tb.textContent=s.n;
+    if(idx===selectedSensor) tb.style.setProperty('--stab-col',col);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  UPDATE DETAIL HERO
+// ═══════════════════════════════════════════════════════════════
+function applyDetailHero(idx, s, col){
+  var conn = s.c===1 && parseInt(s.m)>=0;
+  var m    = conn ? parseInt(s.m) : 0;
+  var tr   = conn ? gT(m) : {a:'#64748B',l:'OFFLINE',h:'Offline',d:'No sensor data.'};
+  var c    = col || tr.a;
+
+  // Glow
+  var dg=document.getElementById('dhGlow');
+  if(dg) dg.style.background='radial-gradient(circle,'+c+',transparent 70%)';
+  // Pill
+  var pp=document.getElementById('dhPill');
+  if(pp){pp.style.background=c+'14';pp.style.color=c;pp.style.borderColor=c+'33';}
+  var pd=document.getElementById('dhPillDot'); if(pd) pd.style.background=c;
+  var pl=document.getElementById('dhPillLbl'); if(pl) pl.textContent=tr.l;
+  // Gauge
+  var off = conn ? Math.round(389.56*(1-m/100)) : 390;
+  var ga=document.getElementById('dhGarc');
+  if(ga){ga.style.strokeDashoffset=off;ga.style.stroke=c;}
+  var gg=document.getElementById('dhGglow');
+  if(gg){gg.style.strokeDashoffset=off;gg.style.stroke=c;}
+  var gv=document.getElementById('dhGval');
+  if(gv){gv.style.color=c; if(conn) sTo('dhGval',m); else gv.textContent='--';}
+  // Text
+  var hl=document.getElementById('dhLabel'); if(hl) hl.textContent=tr.h;
+  var hd=document.getElementById('dhDesc');  if(hd) hd.textContent=tr.d;
+  // Bar
+  var mf=document.getElementById('dhMfill');
+  if(mf){mf.style.width=(conn?m:0)+'%';mf.style.background=c;}
+  // Chips
+  var cr=document.getElementById('dhRaw');   if(cr) cr.textContent=s.r||'--';
+  var ct=document.getElementById('dhTrend'); if(ct) ct.textContent=s.t||'--';
+  var cc=document.getElementById('dhCal');
+  if(cc) cc.innerHTML=s.cal=='1'?'<span class="dh-chip-v" style="color:#34D399">CAL ✓</span>':'DEFAULT';
+  // Footer
+  var ls=document.getElementById('dhLastSeen');
+  if(ls) ls.textContent='LIVE ● '+new Date().toLocaleTimeString();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  APPLY FULL MQTT PAYLOAD  (4-sensor format)
+// ═══════════════════════════════════════════════════════════════
+function applyData(d){
+  lastMsgTime = Date.now();
+  resetStaleTimer();
+  setBadgeLive();
+
+  // Update sensor names from payload
+  if(d.sensors){
+    for(var i=0;i<d.sensors.length&&i<4;i++){
+      if(d.sensors[i].n) sensorNames[i]=d.sensors[i].n;
+    }
+  }
+
+  // Build grid on first message
+  buildGrid();
+
+  // Store and render each sensor
+  if(d.sensors){
+    for(var i=0;i<d.sensors.length&&i<4;i++){
+      sensorData[i]=d.sensors[i];
+      updateCard(i, d.sensors[i]);
+      var conn=d.sensors[i].c===1&&parseInt(d.sensors[i].m)>=0;
+      if(conn){
+        var m=parseInt(d.sensors[i].m);
+        sensorHistory[i].push(m);
+        if(sensorHistory[i].length>30) sensorHistory[i].shift();
+      }
+    }
+  }
+
+  // Detail hero for selected sensor
+  if(sensorData[selectedSensor]){
+    var col=sColor(selectedSensor);
+    setAcc(col);
+    applyDetailHero(selectedSensor, sensorData[selectedSensor], col);
+    drawChart(sensorHistory[selectedSensor], col);
+    document.getElementById('chartTitle').textContent=sensorNames[selectedSensor]+' History';
+  }
+
+  // System metrics
+  var rssi=parseInt(d.rssi)||0;
+  var sq=Math.min(100,Math.max(0,Math.round((rssi+90)/50*100)));
+  var sc=sq>70?'#34D399':sq>40?'#FBBF24':'#F87171';
+  document.getElementById('mRssi').textContent=d.rssi||'--';
+  document.getElementById('mRssiU').textContent=d.rssi?'dBm':'';
+  document.getElementById('sigBar').style.width=sq+'%';
+  document.getElementById('sigBar').style.background=sc;
+  document.getElementById('sigCard').style.setProperty('--ma',sc+'66');
+
+  var hb=parseInt(d.heap)||0, kb=Math.round(hb/1024);
+  var hp=Math.min(100,Math.round(kb/320*100));
+  var hc=kb>150?'#34D399':kb>80?'#FBBF24':'#F87171';
+  document.getElementById('mHeap').textContent=kb;
+  document.getElementById('heapBar').style.width=hp+'%';
+  document.getElementById('heapBar').style.background=hc;
+  document.getElementById('heapCard').style.setProperty('--ma',hc+'66');
+
+  var up=parseInt(d.uptime)||0;
+  document.getElementById('mUpH').textContent=Math.floor(up/3600);
+  document.getElementById('mUpM').textContent=Math.floor((up%3600)/60)+' min';
+
+  document.getElementById('mBoot').textContent=d.boot||'--';
+  document.getElementById('mDevID').textContent=d.device?'ID: '+d.device:'';
+
+  // Device info card
+  document.getElementById('iDevID').textContent=d.device||'--';
+  document.getElementById('iFW').textContent=d.fw?'v'+d.fw:'--';
+  document.getElementById('iBoot').textContent=d.boot?'#'+d.boot:'--';
+  document.getElementById('iTs').textContent=d.ts||new Date().toLocaleTimeString();
+  document.getElementById('dhFwVer').textContent=d.fw?'FW v'+d.fw:'--';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAW CHART
+// ═══════════════════════════════════════════════════════════════
+function drawChart(pts, acc){
+  var n=pts.length;
+  document.getElementById('chartCount').textContent=n+' POINTS';
+  if(n<2){
+    document.getElementById('chartEmpty').style.display='block';
+    document.getElementById('chartArea').setAttribute('points','');
+    document.getElementById('chartLine').setAttribute('points','');
+    document.getElementById('chartDot').setAttribute('cx','0');
+    document.getElementById('chartDot').setAttribute('cy','0');
+    document.getElementById('chartHalo').setAttribute('cx','0');
+    document.getElementById('chartHalo').setAttribute('cy','0');
+    return;
+  }
+  document.getElementById('chartEmpty').style.display='none';
+  var mn=Math.min.apply(null,pts), mx=Math.max.apply(null,pts);
+  var linePts='', areaPts='';
+  for(var i=0;i<n;i++){
+    var x=(i/(n-1))*330;
+    var y=68-(pts[i]/100)*64;
+    var seg=x.toFixed(1)+','+y.toFixed(1)+' ';
+    linePts+=seg;
+    if(i===0) areaPts+='0,68 ';
+    areaPts+=seg;
+  }
+  areaPts+='330,68';
+  document.getElementById('chartArea').setAttribute('points',areaPts);
+  document.getElementById('chartLine').setAttribute('points',linePts);
+  var lx=330, ly=68-(pts[n-1]/100)*64;
+  document.getElementById('chartDot').setAttribute('cx',lx.toFixed(1));
+  document.getElementById('chartDot').setAttribute('cy',ly.toFixed(1));
+  document.getElementById('chartHalo').setAttribute('cx',lx.toFixed(1));
+  document.getElementById('chartHalo').setAttribute('cy',ly.toFixed(1));
+  document.getElementById('chartRange').textContent=mn+'%\u2013'+mx+'%';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CONNECTION BADGE
+// ═══════════════════════════════════════════════════════════════
+function setBadge(cls,dot,txt,anim){
+  var b=document.getElementById('connBadge'),d=document.getElementById('connDot'),t=document.getElementById('connTxt');
+  b.className='conn-badge '+cls;
+  d.style.background=dot;
+  d.style.animation=anim?'breathe 2.4s ease-in-out infinite':'none';
+  t.textContent=txt;
+}
+function setBadgeLive(){setBadge('badge-live','#2DD4BF','LIVE',true);}
+function setBadgeConnecting(){setBadge('badge-connecting','#FBBF24','Connecting...',true);}
+function setBadgeStale(){setBadge('badge-stale','#F87171','STALE',false);}
+function setBadgeOffline(){setBadge('badge-offline','#64748B','Offline',false);}
+
+// ═══════════════════════════════════════════════════════════════
+//  STALE DETECTION
+// ═══════════════════════════════════════════════════════════════
+function resetStaleTimer(){
+  if(staleTimer) clearTimeout(staleTimer);
+  document.getElementById('staleBanner').style.display='none';
+  staleTimer=setTimeout(function(){
+    setBadgeStale();
+    document.getElementById('staleBanner').style.display='flex';
+  },120000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MQTT CONNECT
+// ═══════════════════════════════════════════════════════════════
+function connectMQTT(cfg){
+  if(mqttClient && mqttClient.isConnected()) mqttClient.disconnect();
+  setBadgeConnecting();
+  var clientId='tasni-dash-'+Math.random().toString(36).substr(2,8);
+  mqttClient=new Paho.Client(cfg.broker, 8884, '/mqtt', clientId);
+
+  mqttClient.onConnectionLost=function(r){
+    setBadgeOffline();
+    setTimeout(function(){
+      var c=loadCreds(); if(c) connectMQTT(c);
+    },5000);
+  };
+
+  mqttClient.onMessageArrived=function(msg){
+    try{
+      var d=JSON.parse(msg.payloadString);
+      applyData(d);
+      showDashboard();
+    }catch(e){ console.warn('Bad payload',e); }
+  };
+
+  var opts={
+    useSSL:true,
+    userName:cfg.username,
+    password:cfg.password,
+    keepAliveInterval:60,
+    cleanSession:true,
+    timeout:10,
+    onSuccess:function(){
+      var topic='tasni/'+cfg.device+'/state';
+      mqttClient.subscribe(topic,{qos:0});
+      toast('Connected — waiting for sensor data','ok');
+    },
+    onFailure:function(e){
+      setBadgeOffline();
+      toast('Connection failed: '+e.errorMessage,'err');
+    }
+  };
+  try{ mqttClient.connect(opts); }
+  catch(e){ setBadgeOffline(); toast('MQTT error: '+e.message,'err'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SETUP FLOW
+// ═══════════════════════════════════════════════════════════════
+function doConnect(){
+  var broker=document.getElementById('inBroker').value.trim();
+  var user  =document.getElementById('inUser').value.trim();
+  var pass  =document.getElementById('inPass').value;
+  var device=document.getElementById('inDevice').value.trim().toUpperCase();
+  if(!broker||!user||!pass||!device){ toast('Please fill in all fields','err'); return; }
+  var cfg={broker:broker,username:user,password:pass,device:device};
+  saveCreds(cfg);
+  connectMQTT(cfg);
+  document.getElementById('setupOverlay').style.display='none';
+  document.getElementById('dashboard').style.display='';
+}
+
+function showSetup(){
+  var cfg=loadCreds()||{};
+  if(cfg.broker)  document.getElementById('inBroker').value=cfg.broker;
+  if(cfg.username)document.getElementById('inUser').value=cfg.username;
+  if(cfg.device)  document.getElementById('inDevice').value=cfg.device;
+  document.getElementById('setupOverlay').style.display='flex';
+}
+
+function showDashboard(){
+  document.getElementById('setupOverlay').style.display='none';
+  document.getElementById('dashboard').style.display='';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════════
+var _tt=null;
+function toast(m,t){
+  var e=document.getElementById('toast');
+  e.textContent=m; e.className='toast on '+(t||'');
+  if(_tt) clearTimeout(_tt);
+  _tt=setTimeout(function(){e.className='toast';},2800);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  URL PARAM SUPPORT  ?device=ABCD&broker=xx&user=yy&pass=zz
+// ═══════════════════════════════════════════════════════════════
+function getParam(k){ var m=new URLSearchParams(window.location.search).get(k); return m?m.trim():null; }
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
+(function init(){
+  var pDevice=getParam('device'), pBroker=getParam('broker');
+  var pUser=getParam('user'), pPass=getParam('pass');
+
+  if(pDevice&&pBroker&&pUser&&pPass){
+    var cfg={device:pDevice.toUpperCase(),broker:pBroker,username:pUser,password:pPass};
+    saveCreds(cfg);
+    document.getElementById('inBroker').value=pBroker;
+    document.getElementById('inUser').value=pUser;
+    document.getElementById('inDevice').value=pDevice.toUpperCase();
+    showDashboard();
+    connectMQTT(cfg);
+    return;
+  }
+
+  var cfg=loadCreds();
+  if(pDevice&&cfg){ cfg.device=pDevice.toUpperCase(); saveCreds(cfg); }
+
+  if(cfg&&cfg.broker&&cfg.username&&cfg.password&&cfg.device){
+    document.getElementById('inBroker').value=cfg.broker;
+    document.getElementById('inUser').value=cfg.username;
+    document.getElementById('inDevice').value=cfg.device;
+    showDashboard();
+    connectMQTT(cfg);
+  } else if(pDevice){
+    document.getElementById('inDevice').value=pDevice.toUpperCase();
+    document.getElementById('setupOverlay').style.display='flex';
+  } else {
+    document.getElementById('setupOverlay').style.display='flex';
+  }
+})();
+</script>
+</body>
+</html>
