@@ -539,8 +539,8 @@ var sensorNames = ['Sensor 1','Sensor 2','Sensor 3','Sensor 4'];
 // ═══════════════════════════════════════════════════════════════
 function sColor(idx){
   var s = sensorData[idx];
-  if(!s || !s.c || s.m < 0) return '#475569';
-  return gT(parseInt(s.m)).a;
+  if(!s || !s.connected || parseInt(s.moisture) < 0) return '#475569';
+  return gT(parseInt(s.moisture)).a;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -677,8 +677,8 @@ function selectSensor(idx){
 //  UPDATE SINGLE SENSOR CARD (small)
 // ═══════════════════════════════════════════════════════════════
 function updateCard(idx, s){
-  var conn = s.c===1 && parseInt(s.m)>=0;
-  var m    = conn ? parseInt(s.m) : 0;
+  var conn = s.connected===1 && parseInt(s.moisture)>=0;
+  var m    = conn ? parseInt(s.moisture) : 0;
   var col  = conn ? gT(m).a : '#475569';
   var dash = conn ? Math.round(232*(1-m/100)) : 232;
 
@@ -707,16 +707,16 @@ function updateCard(idx, s){
   if(sbf){sbf.style.width=(conn?m:0)+'%';sbf.style.background=col;}
   // chips
   var scr=document.getElementById('scr_'+idx);
-  if(scr) scr.textContent=s.r||'--';
+  if(scr) scr.textContent=s.raw||'--';
   var sct=document.getElementById('sct_'+idx);
-  if(sct) sct.textContent=s.t||'~';
+  if(sct) sct.textContent=s.trend||'~';
   // name
   var sn=document.getElementById('sn_'+idx);
-  if(sn && s.n) sn.textContent=s.n;
+  if(sn && s.name) sn.textContent=s.name;
   // tab
   var tb=document.getElementById('stab_'+idx);
   if(tb){
-    if(s.n) tb.textContent=s.n;
+    if(s.name) tb.textContent=s.name;
     if(idx===selectedSensor) tb.style.setProperty('--stab-col',col);
   }
 }
@@ -725,8 +725,8 @@ function updateCard(idx, s){
 //  UPDATE DETAIL HERO
 // ═══════════════════════════════════════════════════════════════
 function applyDetailHero(idx, s, col){
-  var conn = s.c===1 && parseInt(s.m)>=0;
-  var m    = conn ? parseInt(s.m) : 0;
+  var conn = s.connected===1 && parseInt(s.moisture)>=0;
+  var m    = conn ? parseInt(s.moisture) : 0;
   var tr   = conn ? gT(m) : {a:'#64748B',l:'OFFLINE',h:'Offline',d:'No sensor data.'};
   var c    = col || tr.a;
 
@@ -753,10 +753,10 @@ function applyDetailHero(idx, s, col){
   var mf=document.getElementById('dhMfill');
   if(mf){mf.style.width=(conn?m:0)+'%';mf.style.background=c;}
   // Chips
-  var cr=document.getElementById('dhRaw');   if(cr) cr.textContent=s.r||'--';
-  var ct=document.getElementById('dhTrend'); if(ct) ct.textContent=s.t||'--';
+  var cr=document.getElementById('dhRaw');   if(cr) cr.textContent=s.raw||'--';
+  var ct=document.getElementById('dhTrend'); if(ct) ct.textContent=s.trend||'--';
   var cc=document.getElementById('dhCal');
-  if(cc) cc.innerHTML=s.cal=='1'?'<span class="dh-chip-v" style="color:#34D399">CAL ✓</span>':'DEFAULT';
+  if(cc) cc.innerHTML=s.cal==1?'<span class="dh-chip-v" style="color:#34D399">CAL ✓</span>':'DEFAULT';
   // Footer
   var ls=document.getElementById('dhLastSeen');
   if(ls) ls.textContent='LIVE ● '+new Date().toLocaleTimeString();
@@ -773,7 +773,7 @@ function applyData(d){
   // Update sensor names from payload
   if(d.sensors){
     for(var i=0;i<d.sensors.length&&i<4;i++){
-      if(d.sensors[i].n) sensorNames[i]=d.sensors[i].n;
+      if(d.sensors[i].name) sensorNames[i]=d.sensors[i].name;
     }
   }
 
@@ -785,9 +785,9 @@ function applyData(d){
     for(var i=0;i<d.sensors.length&&i<4;i++){
       sensorData[i]=d.sensors[i];
       updateCard(i, d.sensors[i]);
-      var conn=d.sensors[i].c===1&&parseInt(d.sensors[i].m)>=0;
+      var conn=d.sensors[i].connected===1&&parseInt(d.sensors[i].moisture)>=0;
       if(conn){
-        var m=parseInt(d.sensors[i].m);
+        var m=parseInt(d.sensors[i].moisture);
         sensorHistory[i].push(m);
         if(sensorHistory[i].length>30) sensorHistory[i].shift();
       }
