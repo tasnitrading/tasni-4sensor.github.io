@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#050508">
 <meta name="description" content="TASNI Cloud Dashboard — Live 4-sensor plant moisture monitoring">
-<title>TASNI Cloud · 4-Sensor</title>
+<title>TASNI Cloud · 4-Sensor v2.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Geist:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -299,7 +299,7 @@ body{font-family:var(--font);background:var(--ink);color:var(--fg1);
       <div class="logo" id="logo">🌿</div>
       <div>
         <div class="brand-name">TASNI</div>
-        <div class="brand-sub">Cloud · 4-Sensor</div>
+        <div class="brand-sub">Cloud · 4-Sensor · v2.1</div>
       </div>
     </div>
     <div class="conn-badge badge-connecting" id="connBadge">
@@ -352,7 +352,7 @@ body{font-family:var(--font);background:var(--ink);color:var(--fg1);
 
   <!-- Stale warning -->
   <div class="stale-banner" id="staleBanner">
-    ⚠ Last update was over 2 minutes ago — device may be offline
+    ⚠ No update received — reconnecting automatically. Check device WiFi if this persists.
   </div>
 
   <!-- ── 4 SENSOR CARDS ── -->
@@ -525,6 +525,8 @@ var mqttClient  = null;
 var lastMsgTime = 0;
 var staleTimer  = null;
 var STORAGE_KEY = 'tasni_cfg_4s_v1';
+var _retryDelay = 5000;
+var _retryTimer = null;
 
 // Per-sensor state: history arrays + last data
 var sensorHistory = [[],[],[],[]];  // 30-point history per sensor
@@ -898,7 +900,7 @@ function resetStaleTimer(){
   staleTimer=setTimeout(function(){
     setBadgeStale();
     document.getElementById('staleBanner').style.display='flex';
-  },120000);
+  },300000);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -912,9 +914,16 @@ function connectMQTT(cfg){
 
   mqttClient.onConnectionLost=function(r){
     setBadgeOffline();
-    setTimeout(function(){
-      var c=loadCreds(); if(c) connectMQTT(c);
-    },5000);
+    document.getElementById('staleBanner').style.display='flex';
+    if(_retryTimer) clearTimeout(_retryTimer);
+    function tryReconnect(){
+      var c=loadCreds();
+      if(!c){ _retryDelay=5000; return; }
+      setBadgeConnecting();
+      connectMQTT(c);
+      _retryDelay=Math.min(_retryDelay*2,30000);
+    }
+    _retryTimer=setTimeout(tryReconnect,_retryDelay);
   };
 
   mqttClient.onMessageArrived=function(msg){
@@ -929,17 +938,23 @@ function connectMQTT(cfg){
     useSSL:true,
     userName:cfg.username,
     password:cfg.password,
-    keepAliveInterval:60,
-    cleanSession:true,
-    timeout:10,
+    keepAliveInterval:30,
+    cleanSession:false,
+    timeout:15,
     onSuccess:function(){
+      _retryDelay=5000;
       var topic='tasni/'+cfg.device+'/state';
       mqttClient.subscribe(topic,{qos:0});
       toast('Connected — waiting for sensor data','ok');
     },
     onFailure:function(e){
       setBadgeOffline();
-      toast('Connection failed: '+e.errorMessage,'err');
+      toast('Connection failed — retrying...','err');
+      if(_retryTimer) clearTimeout(_retryTimer);
+      _retryTimer=setTimeout(function(){
+        var c=loadCreds(); if(c){ setBadgeConnecting(); connectMQTT(c); }
+        _retryDelay=Math.min(_retryDelay*2,30000);
+      },_retryDelay);
     }
   };
   try{ mqttClient.connect(opts); }
@@ -990,6 +1005,20 @@ function toast(m,t){
 //  URL PARAM SUPPORT  ?device=ABCD&broker=xx&user=yy&pass=zz
 // ═══════════════════════════════════════════════════════════════
 function getParam(k){ var m=new URLSearchParams(window.location.search).get(k); return m?m.trim():null; }
+
+// ═══════════════════════════════════════════════════════════════
+//  PAGE VISIBILITY — reconnect when customer returns to tab
+// ═══════════════════════════════════════════════════════════════
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'){
+    var c=loadCreds();
+    if(c && (!mqttClient || !mqttClient.isConnected())){
+      _retryDelay=5000;
+      setBadgeConnecting();
+      setTimeout(function(){ connectMQTT(c); },1000);
+    }
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  INIT
