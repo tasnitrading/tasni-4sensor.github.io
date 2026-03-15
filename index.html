@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#050508">
 <meta name="description" content="TASNI Cloud Dashboard — Live 4-sensor plant moisture monitoring">
-<title>TASNI Cloud · 4-Sensor v2.1</title>
+<title>TASNI Cloud · 4-Sensor v2.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Geist:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -299,7 +299,7 @@ body{font-family:var(--font);background:var(--ink);color:var(--fg1);
       <div class="logo" id="logo">🌿</div>
       <div>
         <div class="brand-name">TASNI</div>
-        <div class="brand-sub">Cloud · 4-Sensor · v2.1</div>
+        <div class="brand-sub">Cloud · 4-Sensor · v2.2</div>
       </div>
     </div>
     <div class="conn-badge badge-connecting" id="connBadge">
@@ -315,23 +315,23 @@ body{font-family:var(--font);background:var(--ink);color:var(--fg1);
     <div class="setup-logo">🌿</div>
     <div class="setup-title">Welcome to TASNI</div>
     <div class="setup-sub">
-      Enter your HiveMQ broker details to connect<br>
+      Enter your MQTT broker details to connect (EMQX or HiveMQ)<br>
       to all 4 sensors from anywhere in the world.
     </div>
     <div class="setup-fields">
       <div>
         <div class="field-label">HiveMQ Broker Host</div>
         <input class="field-input" id="inBroker" type="text"
-          placeholder="xxxxxxxx.s1.eu.hivemq.cloud" autocomplete="off" autocapitalize="none">
+          placeholder="xxxxxxxx.ala.asia-southeast1.emqxsl.com" autocomplete="off" autocapitalize="none">
       </div>
       <div>
         <div class="field-label">Username</div>
         <input class="field-input" id="inUser" type="text"
-          placeholder="your-hivemq-username" autocomplete="off" autocapitalize="none">
+          placeholder="your-emqx-username" autocomplete="off" autocapitalize="none">
       </div>
       <div>
         <div class="field-label">Password</div>
-        <input class="field-input" id="inPass" type="password" placeholder="your-hivemq-password">
+        <input class="field-input" id="inPass" type="password" placeholder="your-emqx-password">
       </div>
       <div>
         <div class="field-label">Device ID (last 4 chars of MAC, shown on device)</div>
@@ -342,7 +342,7 @@ body{font-family:var(--font);background:var(--ink);color:var(--fg1);
     <button class="connect-btn" onclick="doConnect()">Connect to My Plants</button>
     <div class="setup-note">
       Credentials saved in your browser only.<br>
-      Free HiveMQ Cloud at <a href="https://www.hivemq.com/mqtt-cloud-broker/" target="_blank">hivemq.com</a>
+      Free EMQX Cloud at <a href="https://cloud.emqx.com" target="_blank">cloud.emqx.com</a> · port 8084
     </div>
   </div>
 </div>
@@ -524,7 +524,7 @@ function gT(m){ for(var i=0;i<T.length;i++) if(m<T[i].t) return T[i]; return T[4
 var mqttClient  = null;
 var lastMsgTime = 0;
 var staleTimer  = null;
-var STORAGE_KEY = 'tasni_cfg_4s_v1';
+var STORAGE_KEY = 'tasni_cfg_4s_v2';
 var _retryDelay = 5000;
 var _retryTimer = null;
 
@@ -910,7 +910,7 @@ function connectMQTT(cfg){
   if(mqttClient && mqttClient.isConnected()) mqttClient.disconnect();
   setBadgeConnecting();
   var clientId='tasni-dash-'+Math.random().toString(36).substr(2,8);
-  mqttClient=new Paho.Client(cfg.broker, 8884, '/mqtt', clientId);
+  mqttClient=new Paho.Client(cfg.broker, Number(cfg.port||8084), '/mqtt', clientId);
 
   mqttClient.onConnectionLost=function(r){
     setBadgeOffline();
